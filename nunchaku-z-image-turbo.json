@@ -1,0 +1,139 @@
+{
+  "9": {
+    "inputs": {
+      "filename_prefix": "z-image",
+      "images": [
+        "43",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "39": {
+    "inputs": {
+      "clip_name": "qwen_3_4b.safetensors",
+      "type": "lumina2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "40": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "41": {
+    "inputs": {
+      "width": 1920,
+      "height": 1088,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "空Latent图像（SD3）"
+    }
+  },
+  "42": {
+    "inputs": {
+      "conditioning": [
+        "45",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "43": {
+    "inputs": {
+      "samples": [
+        "44",
+        0
+      ],
+      "vae": [
+        "40",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "44": {
+    "inputs": {
+      "seed": 865348802035794,
+      "steps": 9,
+      "cfg": 1,
+      "sampler_name": "res_multistep",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "47",
+        0
+      ],
+      "positive": [
+        "45",
+        0
+      ],
+      "negative": [
+        "42",
+        0
+      ],
+      "latent_image": [
+        "41",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "45": {
+    "inputs": {
+      "text": "一位身着浅蓝色棉质练功服的中国美女，正在进行高难度太极拳的动态动作，姿态充满力量与优雅，呈现四分之三侧视图，视角略微仰视，捕捉动作的爆发力。光照采用柔和的漫射光，背景为浅灰色纯色，细节呈现出真实的棉质纹理和肌肤质感，肤色自然，面部表情专注而自信。材质细节包括棉布的褶皱、肌肤的纹理和汗珠，整体光照均匀，清晰的轮廓和边缘，色彩鲜明，呈现高质量的3D照片风格，适合3D重建，细节丰富，光影交融，画面构图平衡，光线充足，画面具有很强的艺术表现力。",
+      "clip": [
+        "39",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "47": {
+    "inputs": {
+      "shift": 3,
+      "model": [
+        "58",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "采样算法（AuraFlow）"
+    }
+  },
+  "58": {
+    "inputs": {
+      "model_name": "svdq-fp4_r128-z-image-turbo.safetensors"
+    },
+    "class_type": "NunchakuZImageDiTLoader",
+    "_meta": {
+      "title": "Nunchaku Z-Image DiT Loader"
+    }
+  }
+}

@@ -1,0 +1,2030 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>SAM-3D 整合包 - 3D模型生成工具</title>
+    <script src="assets/tailwind.js?v=2.0"></script>
+    <script src="assets/js/three.min.js?v=2.0"></script>
+    <script src="assets/js/OrbitControls.js?v=2.0"></script>
+    <script src="assets/js/GLTFLoader.js?v=2.0"></script>
+    <script src="assets/js/FBXLoader.js"></script>
+    <script src="assets/js/OBJLoader.js"></script>
+    <script src="assets/js/STLLoader.js"></script>
+    <script src="assets/js/PLYLoader.js"></script>
+    <link href="assets/css/fonts.css" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        
+        .glass-effect {
+            background: rgba(31, 41, 55, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(75, 85, 99, 0.5);
+        }
+        
+        .gradient-border {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2px;
+            border-radius: 12px;
+        }
+        
+        .gradient-border-inner {
+            background: #1f2937;
+            border-radius: 10px;
+        }
+        
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.2);
+        }
+        
+        .loading-spinner {
+            border: 3px solid #374151;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .pulse-animation {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .image-card {
+            aspect-ratio: 1;
+            object-fit: contain;
+        }
+        
+        .llm-output {
+            font-family: 'Courier New', monospace;
+        }
+        
+        .model-type-btn {
+            transition: all 0.3s ease;
+        }
+        
+        .model-type-btn.active {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+        }
+        
+        .model-type-btn:hover {
+            transform: scale(1.03);
+        }
+        
+        .preview-container {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        #image-canvas {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        #three-canvas {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white h-screen w-screen overflow-hidden">
+    <div class="flex h-full">
+        <aside class="w-80 h-full glass-effect overflow-y-auto flex flex-col">
+            <div class="p-6 border-b border-gray-700">
+                <h1 class="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    SAM-3D 整合包
+                </h1>
+                <p class="text-gray-400 text-sm mt-2">3D模型生成工具</p>
+            </div>
+            
+            <div class="p-6 space-y-6 flex-1">
+                <div class="space-y-4">
+                    <h2 class="text-lg font-semibold text-purple-400">LLM 配置</h2>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">LLM 提供商</label>
+                        <select id="llm-provider" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                            <option value="ollama" selected>Ollama (本地)</option>
+                            <option value="lmstudio">LM Studio (本地)</option>
+                            <option value="vllm">vLLM (本地)</option>
+                            <option value="deepseek">DeepSeek (在线)</option>
+                            <option value="siliconflow">硅基流动 (在线)</option>
+                            <option value="custom">自定义</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">API URL</label>
+                        <input type="text" id="llm-url" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="http://localhost:11434" value="http://localhost:11434">
+                        <p class="text-xs text-gray-500 mt-1">Ollama: http://localhost:11434 | LM Studio: http://localhost:1234</p>
+                    </div>
+                    
+                    <div id="api-key-container" class="hidden">
+                        <label class="block text-sm font-medium text-gray-300 mb-2">API Key</label>
+                        <input type="password" id="llm-api-key" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="输入 API Key">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">模型</label>
+                        <div class="flex gap-2">
+                            <select id="llm-model" class="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                                <option value="">请先刷新模型列表</option>
+                            </select>
+                            <button id="refresh-models-btn" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors">
+                                刷新
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="space-y-4">
+                    <h2 class="text-lg font-semibold text-purple-400">文生图设置</h2>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">工作流</label>
+                        <select id="workflow-select" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                            <option value="nunchaku_z_image_turbo" selected>Nunchaku Z-Image Turbo</option>
+                            <option value="flux2_klein">Flux2 Klein</option>
+                            <option value="flux2_klein_9b">Flux2 Klein 9B (官方版)</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">分辨率</label>
+                        <select id="resolution-select" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                            <option value="1920x1080">1920 x 1080 (横屏)</option>
+                            <option value="1080x1920">1080 x 1920 (竖屏)</option>
+                            <option value="1024x1024" selected>1024 x 1024 (正方形)</option>
+                            <option value="1280x720">1280 x 720 (横屏)</option>
+                            <option value="720x1280">720 x 1280 (竖屏)</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">负面提示词（仅部分工作流支持）</label>
+                        <textarea id="negative-prompt" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 h-20 resize-none" placeholder="flux2-klein工作流支持负面提示词，其他工作流不支持..."></textarea>
+                    </div>
+                </div>
+                
+                <div class="space-y-4">
+                    <h2 class="text-lg font-semibold text-purple-400">3D 模型设置</h2>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-3">模型类型（选择一项）</label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button id="body-type-btn" class="model-type-btn active p-4 bg-gradient-to-br from-purple-600 to-purple-800 rounded-xl border-2 border-purple-400 flex flex-col items-center gap-2">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                                </svg>
+                                <span class="font-semibold">人体模型</span>
+                                <span class="text-xs text-purple-200">SAM-3D Body</span>
+                            </button>
+                            <button id="objects-type-btn" class="model-type-btn p-4 bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl border-2 border-blue-400 flex flex-col items-center gap-2">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                                </svg>
+                                <span class="font-semibold">物体模型</span>
+                                <span class="text-xs text-blue-200">SAM-3D Objects</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">导出格式</label>
+                        <select id="export-format" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                            <option value="mhr">MHR JSON (官方支持，推荐)</option>
+                            <option value="glb">GLB (推荐，包含纹理)</option>
+                            <option value="fbx">FBX (通用格式)</option>
+                            <option value="obj">OBJ (通用格式)</option>
+                            <option value="ply">PLY (通用格式)</option>
+                            <option value="stl">STL (3D打印)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        <main class="flex-1 flex flex-col h-full">
+            <div class="h-[70%] p-6 bg-gray-800/50">
+                <div class="h-full flex gap-6">
+                    <div class="flex-1 flex flex-col">
+                        <div class="mb-4">
+                            <h2 class="text-xl font-bold text-white">图片预览</h2>
+                        </div>
+                        
+                        <div class="flex-1 bg-gray-900 rounded-xl border border-gray-700 overflow-hidden relative">
+                            <div id="image-placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
+                                <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                </svg>
+                                <p class="text-lg">上传图片或生成图片</p>
+                                <p class="text-sm mt-2">支持 PNG, JPG, WEBP 格式</p>
+                            </div>
+                            <canvas id="image-canvas" class="hidden w-full" style="max-height: 100%; object-fit: contain;"></canvas>
+                            <div id="person-selection-overlay" class="hidden absolute inset-0">
+                                <canvas id="selection-canvas" class="absolute inset-0 w-full h-full cursor-pointer"></canvas>
+                            </div>
+                        </div>
+                        
+                        <div id="person-selection-controls" class="hidden mt-4 bg-gray-800 rounded-lg p-4 border border-gray-700">
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-sm font-semibold text-purple-400">检测到的人体</h3>
+                                <div class="flex gap-2">
+                                    <button id="select-all-btn" class="px-3 py-1 bg-purple-600 hover:bg-purple-700 rounded text-sm transition-colors">
+                                        全选
+                                    </button>
+                                    <button id="deselect-all-btn" class="px-3 py-1 bg-gray-600 hover:bg-gray-700 rounded text-sm transition-colors">
+                                        取消全选
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="person-list" class="flex flex-wrap gap-2">
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4 flex gap-2">
+                            <button id="upload-image-btn" class="flex-1 px-4 py-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 rounded-lg font-semibold transition-all flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                                </svg>
+                                上传图片
+                            </button>
+                            <button id="detect-persons-btn" class="flex-1 px-4 py-3 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 rounded-lg font-semibold transition-all flex items-center justify-center gap-2" disabled>
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                                </svg>
+                                检测多人
+                            </button>
+                            <button id="detect-objects-btn" class="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg font-semibold transition-all flex items-center justify-center gap-2" disabled>
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                                </svg>
+                                检测多物体
+                            </button>
+                            <input type="text" id="object-prompt-input" placeholder="输入物体名称，如: airplane" class="w-48 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 text-sm" disabled>
+                            <input type="file" id="image-upload-input" accept="image/*" class="hidden">
+                        </div>
+                    </div>
+                    
+                    <div class="flex-1 flex flex-col">
+                        <div class="mb-4 flex items-center justify-between">
+                            <h2 class="text-xl font-bold text-white">3D 模型预览</h2>
+                            <div class="flex gap-2">
+                                <button id="toggle-floor-btn" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm transition-colors">
+                                    隐藏地板
+                                </button>
+                                <button id="reset-view-btn" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm transition-colors">
+                                    重置视角
+                                </button>
+                                <button id="toggle-wireframe-btn" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm transition-colors">
+                                    线框模式
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4 bg-gray-800 rounded-lg p-3 border border-gray-700">
+                            <div class="flex items-center gap-4">
+                                <label class="text-sm font-medium text-gray-300 whitespace-nowrap">光线亮度</label>
+                                <input type="range" id="light-intensity" min="0.1" max="3" step="0.1" value="0.8" class="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                                <span id="light-intensity-value" class="text-sm text-gray-300 w-12 text-right">0.8</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex-1 bg-gray-900 rounded-xl border border-gray-700 overflow-hidden relative">
+                            <div id="model-placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
+                                <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                                </svg>
+                                <p class="text-lg">3D 模型预览</p>
+                                <p class="text-sm mt-2">生成模型后在此预览</p>
+                                <p class="text-xs mt-1 text-gray-400">支持鼠标拖拽旋转、滚轮缩放</p>
+                            </div>
+                            <div id="three-container" class="hidden w-full h-full">
+                                <canvas id="three-canvas"></canvas>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4 flex gap-2">
+                            <button id="generate-3d-btn" class="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 rounded-lg font-semibold transition-all flex items-center justify-center gap-2" disabled>
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                                </svg>
+                                生成 3D 模型
+                            </button>
+                            <button id="download-model-btn" class="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-lg font-semibold transition-all flex items-center justify-center gap-2" disabled>
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                                </svg>
+                                导出模型
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="h-[30%] border-t border-gray-700 bg-black/30 p-4 overflow-y-auto">
+                <div class="h-full flex flex-col">
+                    <div class="mb-3 flex items-center justify-between">
+                        <h3 class="text-sm font-semibold text-purple-400">输入描述</h3>
+                        <div class="flex gap-2">
+                            <button id="generate-prompt-btn" class="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-lg font-medium transition-all flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                </svg>
+                                生成提示词
+                            </button>
+                            <button id="generate-image-btn" class="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 rounded-lg font-medium transition-all flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                </svg>
+                                生成图片
+                            </button>
+                        </div>
+                    </div>
+                    <textarea id="user-input" class="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none text-base" placeholder="输入描述后点击"生成提示词"，LLM将直接优化此处的内容"></textarea>
+                </div>
+            </div>
+        </main>
+        
+        <aside class="w-80 h-full glass-effect overflow-y-auto">
+            <div class="p-6 border-b border-gray-700">
+                <h2 class="text-lg font-semibold text-purple-400">系统状态</h2>
+            </div>
+            
+            <div class="p-6 space-y-4">
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-600">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-gray-400">后端服务</span>
+                        <span id="backend-status" class="text-sm px-2 py-1 rounded-full bg-gray-600">检查中...</span>
+                    </div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-gray-400">CUDA 可用</span>
+                        <span id="cuda-status" class="text-sm px-2 py-1 rounded-full bg-gray-600">检查中...</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-400">SAM-3D Body</span>
+                        <span id="sam3d-body-status" class="text-sm px-2 py-1 rounded-full bg-gray-600">检查中...</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-400">SAM-3D Objects</span>
+                        <span id="sam3d-objects-status" class="text-sm px-2 py-1 rounded-full bg-gray-600">检查中...</span>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-600">
+                    <h3 class="text-sm font-semibold text-purple-400 mb-3">使用说明</h3>
+                    <ol class="text-sm text-gray-400 space-y-2 list-decimal list-inside">
+                        <li>配置 LLM 提供商和模型</li>
+                        <li>上传图片或输入描述生成图片</li>
+                        <li>选择人体或物体模型类型</li>
+                        <li>点击"生成 3D 模型"</li>
+                        <li>预览并下载模型</li>
+                    </ol>
+                </div>
+                
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-600">
+                    <h3 class="text-sm font-semibold text-purple-400 mb-3">提示</h3>
+                    <ul class="text-sm text-gray-400 space-y-2 list-disc list-inside">
+                        <li>生成的图片应为3D白模风格</li>
+                        <li>背景简洁，光照均匀</li>
+                        <li>视角适合3D建模</li>
+                        <li>人体模型使用 SAM-3D Body</li>
+                        <li>物体模型使用 SAM-3D Objects</li>
+                        <li>支持多种格式导出</li>
+                    </ul>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        
+        let currentPrompt = '';
+        let currentImage = '';
+        let current3DModel = '';
+        let selectedModelType = 'body';
+        let scene, camera, renderer, controls;
+        let currentModel = null;
+        let wireframeMode = false;
+        let floorMesh = null;
+        let floorVisible = true;
+        let ambientLight, directionalLight, directionalLight2, hemisphereLight, backLight, fillLight;
+        
+        // 多人检测和选择相关变量
+        let detectedPersons = [];
+        let selectedPersons = [];
+        let imageBase64 = '';
+        let selectionCanvas, selectionCtx;
+        
+        // 多物体检测和选择相关变量
+        let detectedObjects = [];
+        let selectedObjects = [];
+        let objectSelectionCanvas, objectSelectionCtx;
+        
+        // 交互式分割变量
+        let interactionMode = false;
+        let interactingObjectIndex = -1;
+        let interactionPoints = [];
+        let interactionLabels = [];
+        
+        const elements = {
+            llmProvider: document.getElementById('llm-provider'),
+            llmUrl: document.getElementById('llm-url'),
+            llmApiKey: document.getElementById('llm-api-key'),
+            llmModel: document.getElementById('llm-model'),
+            refreshModelsBtn: document.getElementById('refresh-models-btn'),
+            workflowSelect: document.getElementById('workflow-select'),
+            resolutionSelect: document.getElementById('resolution-select'),
+            negativePrompt: document.getElementById('negative-prompt'),
+            bodyTypeBtn: document.getElementById('body-type-btn'),
+            objectsTypeBtn: document.getElementById('objects-type-btn'),
+            exportFormat: document.getElementById('export-format'),
+            userInput: document.getElementById('user-input'),
+            generatePromptBtn: document.getElementById('generate-prompt-btn'),
+            generateImageBtn: document.getElementById('generate-image-btn'),
+            generate3DBtn: document.getElementById('generate-3d-btn'),
+            uploadImageBtn: document.getElementById('upload-image-btn'),
+            imageUploadInput: document.getElementById('image-upload-input'),
+            imagePlaceholder: document.getElementById('image-placeholder'),
+            imageCanvas: document.getElementById('image-canvas'),
+            modelPlaceholder: document.getElementById('model-placeholder'),
+            threeContainer: document.getElementById('three-container'),
+            threeCanvas: document.getElementById('three-canvas'),
+            downloadModelBtn: document.getElementById('download-model-btn'),
+            resetViewBtn: document.getElementById('reset-view-btn'),
+            toggleWireframeBtn: document.getElementById('toggle-wireframe-btn'),
+            toggleFloorBtn: document.getElementById('toggle-floor-btn'),
+            lightIntensity: document.getElementById('light-intensity'),
+            lightIntensityValue: document.getElementById('light-intensity-value'),
+            backendStatus: document.getElementById('backend-status'),
+            cudaStatus: document.getElementById('cuda-status'),
+            sam3dBodyStatus: document.getElementById('sam3d-body-status'),
+            sam3dObjectsStatus: document.getElementById('sam3d-objects-status'),
+            personSelectionOverlay: document.getElementById('person-selection-overlay'),
+            selectionCanvas: document.getElementById('selection-canvas'),
+            personSelectionControls: document.getElementById('person-selection-controls'),
+            personList: document.getElementById('person-list'),
+            selectAllBtn: document.getElementById('select-all-btn'),
+            deselectAllBtn: document.getElementById('deselect-all-btn'),
+            detectPersonsBtn: document.getElementById('detect-persons-btn'),
+            detectObjectsBtn: document.getElementById('detect-objects-btn'),
+            objectPromptInput: document.getElementById('object-prompt-input'),
+        };
+        
+        function initThreeJS() {
+            const container = elements.threeContainer;
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111827);
+            
+            camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+            camera.position.set(0, 1, 3);
+            
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: elements.threeCanvas, 
+                antialias: true,
+                alpha: true 
+            });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.0;
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+            
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = false;
+            controls.minDistance = 1;
+            controls.maxDistance = 10;
+            controls.target.set(0, 0, 0);
+            
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+            
+            directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+            
+            directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight2.position.set(-5, 5, -7.5);
+            scene.add(directionalLight2);
+            
+            hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+            scene.add(hemisphereLight);
+            
+            backLight = new THREE.DirectionalLight(0xffffff, 0.4);
+            backLight.position.set(0, 5, -10);
+            scene.add(backLight);
+            
+            fillLight = new THREE.PointLight(0xffffff, 0.5, 10);
+            fillLight.position.set(0, 2, 2);
+            scene.add(fillLight);
+            
+            elements.lightIntensity.addEventListener('input', (e) => {
+                const intensity = parseFloat(e.target.value);
+                elements.lightIntensityValue.textContent = intensity.toFixed(1);
+                updateLightIntensity(intensity);
+            });
+            
+            const floorGeometry = new THREE.PlaneGeometry(20, 20);
+            const floorMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x8B5A2B,
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
+            floorMesh.rotation.x = -Math.PI / 2;
+            floorMesh.position.y = 0;
+            floorMesh.name = 'floor';
+            scene.add(floorMesh);
+            
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+            
+            window.addEventListener('resize', () => {
+                const newWidth = container.clientWidth;
+                const newHeight = container.clientHeight;
+                camera.aspect = newWidth / newHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(newWidth, newHeight);
+            });
+        }
+        
+        function updateLightIntensity(intensity) {
+            if (ambientLight) {
+                ambientLight.intensity = intensity;
+            }
+            if (directionalLight) {
+                directionalLight.intensity = intensity * 0.8;
+            }
+            if (directionalLight2) {
+                directionalLight2.intensity = intensity * 0.4;
+            }
+            if (hemisphereLight) {
+                hemisphereLight.intensity = intensity * 0.5;
+            }
+            if (backLight) {
+                backLight.intensity = intensity * 0.3;
+            }
+            if (fillLight) {
+                fillLight.intensity = intensity * 0.4;
+            }
+        }
+        
+        function loadModel(modelData, format) {
+            console.log('loadModel called with format:', format);
+            console.log('Model data size:', modelData.byteLength);
+            
+            if (currentModel) {
+                console.log('Removing existing model from scene');
+                scene.remove(currentModel);
+                currentModel = null;
+            }
+            
+            let loader;
+            switch (format) {
+                case 'glb':
+                case 'gltf':
+                    console.log('Loading GLB/GLTF model...');
+                    loader = new THREE.GLTFLoader();
+                    loader.parse(modelData, '', (gltf) => {
+                        console.log('GLB/GLTF loaded successfully');
+                        console.log('GLTF scene children:', gltf.scene.children.length);
+                        
+                        currentModel = gltf.scene;
+                        
+                        // 遍历所有网格，保留原有材质
+                        let meshCount = 0;
+                        currentModel.traverse((child) => {
+                            if (child.isMesh) {
+                                meshCount++;
+                                
+                                if (child.geometry) {
+                                    child.geometry.computeVertexNormals();
+                                }
+                                
+                                // 保留原有材质，确保可见
+                                if (!child.material) {
+                                    child.material = new THREE.MeshStandardMaterial({
+                                        color: 0x888888,
+                                        side: THREE.DoubleSide
+                                    });
+                                } else {
+                                    // 确保材质属性正确
+                                    child.material.side = THREE.DoubleSide;
+                                    child.material.needsUpdate = true;
+                                }
+                            }
+                        });
+                        console.log('Total meshes found:', meshCount);
+                        
+                        // 添加到场景
+                        scene.add(currentModel);
+                        
+                        // 适应相机
+                        fitCameraToModel(currentModel);
+                        console.log('Model loading complete');
+                    }, (error) => {
+                        console.error('Error loading GLB/GLTF:', error);
+                    });
+                    break;
+                case 'fbx':
+                    console.log('Loading FBX model...');
+                    loader = new THREE.FBXLoader();
+                    loader.parse(modelData, '', (fbx) => {
+                        console.log('FBX loaded successfully');
+                        currentModel = fbx;
+                        
+                        // 遍历所有网格，应用材质
+                        currentModel.traverse((child) => {
+                            if (child.isMesh) {
+                                if (child.geometry) {
+                                    child.geometry.computeVertexNormals();
+                                }
+                                
+                                // 创建新的材质
+                                const newMaterial = new THREE.MeshStandardMaterial({
+                                    color: 0x888888,
+                                    side: THREE.DoubleSide,
+                                    flatShading: false
+                                });
+                                child.material = newMaterial;
+                            }
+                        });
+                        
+                        // 添加到场景
+                        scene.add(currentModel);
+                        
+                        // 适应相机
+                        fitCameraToModel(currentModel);
+                    }, (error) => {
+                        console.error('Error loading FBX:', error);
+                    });
+                    break;
+                case 'obj':
+                    console.log('Loading OBJ model...');
+                    loader = new THREE.OBJLoader();
+                    loader.parse(modelData, '', (obj) => {
+                        console.log('OBJ loaded successfully');
+                        currentModel = obj;
+                        
+                        // 遍历所有网格，应用材质
+                        currentModel.traverse((child) => {
+                            if (child.isMesh) {
+                                if (child.geometry) {
+                                    child.geometry.computeVertexNormals();
+                                }
+                                
+                                // 创建新的材质
+                                const newMaterial = new THREE.MeshStandardMaterial({
+                                    color: 0x888888,
+                                    side: THREE.DoubleSide,
+                                    flatShading: false
+                                });
+                                child.material = newMaterial;
+                            }
+                        });
+                        
+                        // 添加到场景
+                        scene.add(currentModel);
+                        
+                        // 适应相机
+                        fitCameraToModel(currentModel);
+                    }, (error) => {
+                        console.error('Error loading OBJ:', error);
+                    });
+                    break;
+                case 'stl':
+                    console.log('Loading STL model...');
+                    loader = new THREE.STLLoader();
+                    loader.parse(modelData, '', (geometry) => {
+                        console.log('STL loaded successfully');
+                        geometry.computeVertexNormals();
+                        const material = new THREE.MeshStandardMaterial({ 
+                            color: 0x808080,
+                            flatShading: false
+                        });
+                        currentModel = new THREE.Mesh(geometry, material);
+                        scene.add(currentModel);
+                        fitCameraToModel(currentModel);
+                    }, (error) => {
+                        console.error('Error loading STL:', error);
+                    });
+                    break;
+                case 'ply':
+                    console.log('Loading PLY model...');
+                    loader = new THREE.PLYLoader();
+                    loader.parse(modelData, '', (geometry) => {
+                        console.log('PLY loaded successfully');
+                        geometry.computeVertexNormals();
+                        const material = new THREE.MeshStandardMaterial({ 
+                            color: 0x808080,
+                            flatShading: false
+                        });
+                        currentModel = new THREE.Mesh(geometry, material);
+                        scene.add(currentModel);
+                        fitCameraToModel(currentModel);
+                    }, (error) => {
+                        console.error('Error loading PLY:', error);
+                    });
+                    break;
+            }
+        }
+        
+        async function loadModelFromCache() {
+            try {
+                console.log('Loading model from cache...');
+                const response = await fetch(`${API_BASE}/3d/model`);
+                console.log('Response status:', response.status);
+                
+                if (response.ok) {
+                    const arrayBuffer = await response.arrayBuffer();
+                    console.log('ArrayBuffer size:', arrayBuffer.byteLength);
+                    console.log('Calling loadModel with glb format...');
+                    loadModel(arrayBuffer, 'glb');
+                } else {
+                    console.error('Failed to load model from cache, status:', response.status);
+                    const errorData = await response.json();
+                    console.error('Error data:', errorData);
+                }
+            } catch (error) {
+                console.error('Error loading model from cache:', error);
+            }
+        }
+        
+        function fitCameraToModel(model) {
+            const box = new THREE.Box3().setFromObject(model);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            
+            const yMin = box.min.y;
+            if (floorMesh && Math.abs(yMin) > 0.01) {
+                model.position.y -= yMin;
+            }
+            
+            controls.target.set(center.x, size.y / 2, center.z);
+            camera.position.set(center.x, size.y * 1.5, center.z + size.z * 2);
+            camera.lookAt(center.x, size.y / 2, center.z);
+        }
+        
+        function updateStatus(element, status, message) {
+            element.textContent = message;
+            element.className = 'text-sm px-2 py-1 rounded-full ' + 
+                (status === 'success' ? 'bg-green-600' : 
+                 status === 'error' ? 'bg-red-600' : 
+                 status === 'loading' ? 'bg-yellow-600' : 'bg-gray-600');
+        }
+        
+        async function checkBackendStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/status`);
+                const data = await response.json();
+
+                updateStatus(elements.backendStatus, data.backend ? 'success' : 'error', data.backend ? '运行中' : '未运行');
+                updateStatus(elements.cudaStatus, data.cuda ? 'success' : 'error', data.cuda ? '可用' : '不可用');
+                updateStatus(elements.sam3dBodyStatus, data.sam3d_body ? 'success' : 'error', data.sam3d_body ? '可用' : '不可用');
+                updateStatus(elements.sam3dObjectsStatus, data.sam3d_objects ? 'success' : 'error', data.sam3d_objects ? '可用' : '不可用');
+
+                // 如果ComfyUI不可用，提示用户
+                if (data.comfyui === false) {
+                    console.warn('⚠️ ComfyUI未连接，图片生成功能将无法使用');
+                    console.warn('请确保ComfyUI正在运行在 http://127.0.0.1:8188');
+                }
+            } catch (error) {
+                updateStatus(elements.backendStatus, 'error', '连接失败');
+                updateStatus(elements.cudaStatus, 'error', '未知');
+                updateStatus(elements.sam3dBodyStatus, 'error', '未知');
+                updateStatus(elements.sam3dObjectsStatus, 'error', '未知');
+            }
+        }
+        
+        async function refreshModels() {
+            try {
+                const provider = elements.llmProvider.value;
+                let baseUrl = elements.llmUrl.value.trim().replace(/\/$/, '');
+                const apiKey = elements.llmApiKey.value;
+                const modelSelect = elements.llmModel;
+                
+                // 自动补充 /v1 路径（所有提供商都使用 OpenAI 兼容 API）
+                if (!baseUrl.endsWith('/v1')) {
+                    baseUrl = baseUrl + '/v1';
+                }
+                
+                modelSelect.innerHTML = '<option value="">加载中...</option>';
+                
+                console.log('=== 刷新模型列表 ===');
+                console.log('Provider:', provider);
+                console.log('Base URL:', baseUrl);
+                
+                let models = [];
+                let endpoint = '';
+                let headers = { 'Content-Type': 'application/json' };
+                
+                if (provider === 'deepseek') {
+                    // DeepSeek 不需要 /v1
+                    baseUrl = baseUrl.replace(/\/v1$/, '');
+                    endpoint = `${baseUrl}/models`;
+                } else {
+                    // Ollama, LM Studio, vLLM, Custom 都使用 OpenAI 兼容 API
+                    endpoint = `${baseUrl}/models`;
+                }
+                
+                if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+                
+                console.log('Endpoint:', endpoint);
+                
+                const res = await fetch(endpoint, { headers });
+                
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    console.error('API 调用失败:', res.status, errorText);
+                    throw new Error(`HTTP ${res.status}: ${errorText}`);
+                }
+                
+                const data = await res.json();
+                models = data.data?.map(m => m.id) || [];
+                
+                if (models.length === 0) {
+                    modelSelect.innerHTML = '<option value="">未找到模型</option>';
+                    console.warn('未获取到模型列表');
+                    return;
+                }
+
+                modelSelect.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+                console.log(`获取到 ${models.length} 个模型:`, models);
+
+                // 优先选择gemma3:4b模型，如果不存在则选择第一个
+                const preferredModel = 'gemma3:4b';
+                if (models.includes(preferredModel)) {
+                    modelSelect.value = preferredModel;
+                    console.log(`自动选择模型: ${preferredModel}`);
+                } else if (models.length > 0) {
+                    modelSelect.value = models[0];
+                    console.log(`选择第一个模型: ${models[0]}`);
+                }
+                
+            } catch (error) {
+                console.error('Failed to refresh models:', error);
+                modelSelect.innerHTML = '<option value="">获取失败</option>';
+                alert('刷新模型列表失败: ' + error.message);
+            }
+        }
+        
+        async function generatePrompt() {
+            const input = elements.userInput.value.trim();
+            if (!input) {
+                alert('请输入描述');
+                return;
+            }
+            
+            const provider = elements.llmProvider.value;
+            let baseUrl = elements.llmUrl.value.trim().replace(/\/$/, '');
+            const apiKey = elements.llmApiKey.value;
+            const model = elements.llmModel.value;
+            
+            if (!model) {
+                alert('请先选择模型');
+                return;
+            }
+            
+            // 自动补充 /v1 路径（所有提供商都使用 OpenAI 兼容 API）
+            if (!baseUrl.endsWith('/v1')) {
+                baseUrl = baseUrl + '/v1';
+            }
+            
+            // 优化的中文prompt，要求生成符合SAM-3D规范的提示词
+            const systemPrompt = `你是专业的AI图像提示词生成专家。你的任务是生成符合SAM-3D Body和SAM-3D Objects图生3D最佳实践的中文图像生成提示词。
+
+核心原则：
+1. 完整主体原则：如果描述的是人，必须是完整全身（从头到脚），绝对禁止只生成半身（膝盖以上、半身、面部特写等）；如果描述的是物品（如汽车），必须是完整物品（完整的车身、可见所有主要部件）
+2. 最佳视角原则：必须使用透视角度，立体感最强的拍摄角度，禁止平视、俯视、仰视等扁平角度
+3. 3D重建适配：确保视角适合3D重建，包含足够的深度信息
+
+具体要求：
+4. 必须输出完整的一个自然段，绝对禁止分段
+5. 绝对禁止任何解释、说明、问候语、结束语等一切多余废话
+6. 只输出最终的提示词内容，不要有任何额外文字
+7. 图片要求：透视角度（略微低角度仰视或四分之三侧视），清晰的轮廓和边缘，充足且均匀的光照，简洁的中性背景（浅灰或白色），展现真实的材质和纹理细节，适合3D重建的高质量照片风格
+8. 避免使用"白模"、"线框"等词，要生成真实材质的图片
+9. 提示词要详细但简洁，约100-150字
+10. 绝对禁止在结尾添加固定短语如"全体车身，整体。"，提示词应该自然流畅地结束
+
+人体描述时的要求：
+- 主体要完整，从头到脚都要可见
+- 禁止"半身"、"上半身"、"特写"等描述
+- 姿态要自然站立或完整动作
+
+物品描述时的要求（重要）：
+- 主体要完整，展示主要轮廓和整体结构
+- 禁止只展示局部的描述
+- 不要在结尾添加固定短语
+- 必须强调背景简洁：纯色背景、摄影棚背景、无多余装饰、无复杂纹理背景、无场景元素
+- 物体要位于画面中央，背景干净无干扰，类似电商产品摄影风格`;
+
+            const userPrompt = `基于以下描述，生成符合SAM-3D图生3D最佳实践的高质量图像提示词（注意：主体必须完整，使用透视角度增强立体感）：${input}`;
+            
+            // 显示生成状态
+            elements.userInput.value = '生成中...';
+            
+            try {
+                console.log('=== 开始生成提示词 ===');
+                console.log('Provider:', provider);
+                console.log('Base URL:', baseUrl);
+                console.log('Model:', model);
+                
+                let endpoint = '';
+                let headers = { 'Content-Type': 'application/json' };
+                
+                if (provider === 'deepseek') {
+                    // DeepSeek 不需要 /v1
+                    baseUrl = baseUrl.replace(/\/v1$/, '');
+                    endpoint = `${baseUrl}/chat/completions`;
+                } else {
+                    // Ollama, LM Studio, vLLM, Custom 都使用 OpenAI 兼容 API
+                    endpoint = `${baseUrl}/chat/completions`;
+                }
+                
+                if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+                
+                const requestBody = {
+                    model: model,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userPrompt }
+                    ],
+                    temperature: 0.7,
+                    stream: true
+                };
+                
+                console.log('Endpoint:', endpoint);
+                console.log('Request body:', JSON.stringify(requestBody, null, 2));
+                
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(requestBody)
+                });
+                
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API 调用失败:', response.status, errorText);
+                    throw new Error(`API 调用失败 (${response.status}): ${errorText}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullResponse = '';
+                elements.userInput.value = '';  // 清空，准备接收流式输出
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n').filter(line => line.trim());
+                    
+                    for (const line of lines) {
+                        try {
+                            if (line.startsWith('data: ')) {
+                                const data = JSON.parse(line.slice(6));
+                                if (data.choices && data.choices[0] && data.choices[0].delta && data.choices[0].delta.content) {
+                                    const content = data.choices[0].delta.content;
+                                    fullResponse += content;
+                                    // 实时流式输出到输入框
+                                    elements.userInput.value = fullResponse;
+                                }
+                            }
+                        } catch (e) {
+                            // 忽略解析错误
+                        }
+                    }
+                }
+                
+                // 确保只有一个自然段，移除多余空白
+                fullResponse = fullResponse.replace(/\n+/g, '').trim();
+                elements.userInput.value = fullResponse;
+
+                currentPrompt = fullResponse;
+
+                console.log('生成完成:', fullResponse);
+                
+            } catch (error) {
+                console.error('Failed to generate prompt:', error);
+                elements.userInput.value = input;  // 恢复原始输入
+                alert('生成提示词失败:\n\n' + (error.message || error));
+            }
+        }
+        
+        async function generateImage() {
+            const prompt = elements.userInput.value.trim();
+            if (!prompt) {
+                alert('请输入提示词');
+                return;
+            }
+
+            // 先检查ComfyUI状态
+            try {
+                const statusResponse = await fetch(`${API_BASE}/status`);
+                const statusData = await statusResponse.json();
+
+                if (statusData.comfyui === false) {
+                    alert('ComfyUI未连接！\n\n请确保ComfyUI正在运行。\nComfyUI默认地址: http://127.0.0.1:8188');
+                    return;
+                }
+            } catch (error) {
+                console.warn('无法检查ComfyUI状态，继续尝试生成图片...');
+            }
+
+            // 显示加载状态
+            const btn = elements.generateImageBtn;
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `
+                <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                生成中...
+            `;
+
+            try {
+                console.log('=== 开始生成图片 ===');
+                console.log('Prompt:', prompt);
+                console.log('Workflow:', elements.workflowSelect.value);
+                console.log('Resolution:', elements.resolutionSelect.value);
+
+                const response = await fetch(`${API_BASE}/image/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: prompt,
+                        workflow: elements.workflowSelect.value,
+                        resolution: elements.resolutionSelect.value,
+                        negative_prompt: elements.negativePrompt.value
+                    })
+                });
+
+                const data = await response.json();
+                console.log('Image generation response:', data);
+
+                if (data.success) {
+                    currentImage = data.image_path;
+                    console.log('Image saved to:', currentImage);
+                    console.log('Image URL:', data.image_url);
+
+                    displayImage(data.image_url);
+                    elements.generate3DBtn.disabled = false;
+
+                    console.log('✅ 图片生成成功，已显示在预览区，可以进行3D生成');
+                } else {
+                    // 显示更详细的错误信息
+                    let errorMsg = '生成图片失败:\n\n';
+                    if (data.error) {
+                        errorMsg += data.error;
+                    } else {
+                        errorMsg += '未知错误';
+                    }
+                    errorMsg += '\n\n建议：';
+                    errorMsg += '\n1. 检查ComfyUI是否正在运行';
+                    errorMsg += '\n2. 确保ComfyUI地址正确 (http://127.0.0.1:8188)';
+                    errorMsg += '\n3. 在ComfyUI界面中查看任务执行情况';
+                    errorMsg += '\n4. 如果使用Flux2工作流，可能需要更长时间';
+
+                    alert(errorMsg);
+                    console.error('Image generation error:', data.error);
+                }
+            } catch (error) {
+                console.error('Failed to generate image:', error);
+                alert('生成图片失败');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+        
+        async function detectPersons() {
+            if (!currentImage) {
+                alert('请先上传或生成图片');
+                return;
+            }
+            
+            const btn = elements.detectPersonsBtn;
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `
+                <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                正在检测...
+            `;
+            
+            try {
+                console.log('=== 检测多人 ===');
+                console.log('Image path:', currentImage);
+                console.log('Image path type:', typeof currentImage);
+                console.log('Image path is empty:', currentImage === '');
+                
+                if (!currentImage || currentImage === '') {
+                    console.error('错误：currentImage 为空');
+                    alert('请先上传或生成图片');
+                    return;
+                }
+                
+                const response = await fetch(`${API_BASE}/3d/detect-persons`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        image_path: currentImage
+                    })
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response ok:', response.ok);
+                
+                const data = await response.json();
+                console.log('Detect response:', data);
+                
+                if (data.success && data.persons && data.persons.length > 0) {
+                    console.log(`检测到 ${data.persons.length} 个人体`);
+                    
+                    // 保存检测到的人体数据
+                    detectedPersons = data.persons;
+                    selectedPersons = data.persons.map(p => p.index);
+                    imageBase64 = data.image_base64;
+                    
+                    // 显示选择界面
+                    showPersonSelection();
+                } else {
+                    console.error('检测失败或未检测到人体');
+                    alert('检测失败或未检测到人体');
+                }
+            } catch (error) {
+                console.error('Failed to detect persons:', error);
+                alert('检测失败');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+        
+        function showPersonSelection() {
+            console.log('=== 显示人体选择界面 ===');
+            console.log('检测到的人体数量:', detectedPersons.length);
+            
+            // 显示遮罩层
+            elements.personSelectionOverlay.classList.remove('hidden');
+            
+            // 显示控制面板
+            elements.personSelectionControls.classList.remove('hidden');
+            
+            // 初始化选择canvas
+            selectionCanvas = elements.selectionCanvas;
+            selectionCtx = selectionCanvas.getContext('2d');
+            
+            // 加载图片
+            const img = new Image();
+            img.onload = async () => {
+                // 设置canvas尺寸
+                selectionCanvas.width = img.width;
+                selectionCanvas.height = img.height;
+                
+                // 绘制图片
+                selectionCtx.drawImage(img, 0, 0);
+                
+                // 绘制人体遮罩
+                await drawPersonMasks();
+            };
+            img.src = `data:image/png;base64,${imageBase64}`;
+            
+            // 更新人体列表
+            updatePersonList();
+            
+            // 添加点击事件
+            selectionCanvas.onclick = handleCanvasClick;
+        }
+        
+        async function drawPersonMasks() {
+            if (!selectionCtx || !detectedPersons.length) return;
+                    
+            // 加载主图
+            const mainImg = await loadImage(`data:image/png;base64,${imageBase64}`);
+            selectionCanvas.width = mainImg.width;
+            selectionCanvas.height = mainImg.height;
+            selectionCtx.drawImage(mainImg, 0, 0);
+                    
+            // 绘制每个人体的遮罩
+            for (let idx = 0; idx < detectedPersons.length; idx++) {
+                const person = detectedPersons[idx];
+                const isSelected = selectedPersons.includes(person.index);
+                const bbox = person.bbox;
+                        
+                if (person.mask_base64) {
+                    const maskImg = await loadImage(`data:image/png;base64,${person.mask_base64}`);
+                            
+                    // 创建离屏 canvas 处理颜色
+                    const offCanvas = document.createElement('canvas');
+                    offCanvas.width = selectionCanvas.width;
+                    offCanvas.height = selectionCanvas.height;
+                    const oCtx = offCanvas.getContext('2d');
+                            
+                    oCtx.drawImage(maskImg, 0, 0);
+                    oCtx.globalCompositeOperation = 'source-in';
+                    oCtx.fillStyle = isSelected ? 'rgba(147, 51, 234, 0.6)' : 'rgba(147, 51, 234, 0.3)';
+                    oCtx.fillRect(0, 0, offCanvas.width, offCanvas.height);
+                            
+                    selectionCtx.drawImage(offCanvas, 0, 0);
+                } else {
+                    selectionCtx.fillStyle = isSelected ? 'rgba(147, 51, 234, 0.4)' : 'rgba(147, 51, 234, 0.2)';
+                    selectionCtx.fillRect(bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]);
+                }
+                        
+                // 绘制边框和序号
+                selectionCtx.strokeStyle = isSelected ? '#9333ea' : '#6b7280';
+                selectionCtx.lineWidth = isSelected ? 3 : 2;
+                selectionCtx.strokeRect(bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]);
+                selectionCtx.fillStyle = isSelected ? '#9333ea' : '#6b7280';
+                selectionCtx.font = 'bold 24px Arial';
+                selectionCtx.fillText(`#${idx + 1}`, bbox[0] + 5, bbox[1] + 30);
+            }
+        }
+        
+        // 辅助函数：加载图片返回Promise
+        function loadImage(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = src;
+            });
+        }
+        
+        async function handleCanvasClick(event) {
+            const rect = selectionCanvas.getBoundingClientRect();
+            const scaleX = selectionCanvas.width / rect.width;
+            const scaleY = selectionCanvas.height / rect.height;
+            
+            const x = (event.clientX - rect.left) * scaleX;
+            const y = (event.clientY - rect.top) * scaleY;
+            
+            // 检查点击了哪个人体
+            for (let i = 0; i < detectedPersons.length; i++) {
+                const person = detectedPersons[i];
+                const bbox = person.bbox;
+                
+                if (x >= bbox[0] && x <= bbox[2] && y >= bbox[1] && y <= bbox[3]) {
+                    // 切换选择状态
+                    const idx = selectedPersons.indexOf(person.index);
+                    if (idx > -1) {
+                        selectedPersons.splice(idx, 1);
+                    } else {
+                        selectedPersons.push(person.index);
+                    }
+                    
+                    // 重绘遮罩
+                    await drawPersonMasks();
+                    
+                    // 更新人体列表
+                    updatePersonList();
+                    
+                    break;
+                }
+            }
+        }
+        
+        function updatePersonList() {
+            elements.personList.innerHTML = '';
+            
+            detectedPersons.forEach((person, idx) => {
+                const isSelected = selectedPersons.includes(person.index);
+                
+                const btn = document.createElement('button');
+                btn.className = `px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                    isSelected 
+                        ? 'bg-purple-600 hover:bg-purple-700 text-white' 
+                        : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                }`;
+                btn.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-full flex items-center justify-center ${
+                            isSelected ? 'bg-purple-400' : 'bg-gray-600'
+                        }">${idx + 1}</span>
+                        <span>人体 ${idx + 1}</span>
+                    </div>
+                `;
+                btn.onclick = () => togglePersonSelection(person.index);
+                
+                elements.personList.appendChild(btn);
+            });
+        }
+        
+        async function togglePersonSelection(index) {
+            const idx = selectedPersons.indexOf(index);
+            if (idx > -1) {
+                selectedPersons.splice(idx, 1);
+            } else {
+                selectedPersons.push(index);
+            }
+            
+            await drawPersonMasks();
+            updatePersonList();
+        }
+        
+        async function selectAllPersons() {
+            selectedPersons = detectedPersons.map(p => p.index);
+            await drawPersonMasks();
+            updatePersonList();
+        }
+        
+        async function deselectAllPersons() {
+            selectedPersons = [];
+            await drawPersonMasks();
+            updatePersonList();
+        }
+        
+        function hidePersonSelection() {
+            elements.personSelectionOverlay.classList.add('hidden');
+            elements.personSelectionControls.classList.add('hidden');
+        }
+        
+        async function detectObjects() {
+            if (!currentImage) {
+                alert('请先上传或生成图片');
+                return;
+            }
+            
+            const btn = elements.detectObjectsBtn;
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `
+                <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                正在检测...
+            `;
+            
+            try {
+                console.log('=== 检测多物体 ===');
+                console.log('Image path:', currentImage);
+                console.log('Image path type:', typeof currentImage);
+                console.log('Image path is empty:', currentImage === '');
+                
+                if (!currentImage || currentImage === '') {
+                    console.error('错误：currentImage 为空');
+                    alert('请先上传或生成图片');
+                    return;
+                }
+                
+                const response = await fetch(`${API_BASE}/3d/detect-objects`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        image_path: currentImage,
+                        prompt: elements.objectPromptInput.value.trim() || 'thing'
+                    })
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response ok:', response.ok);
+                
+                const data = await response.json();
+                console.log('Detect response:', data);
+                
+                if (data.success && data.objects && data.objects.length > 0) {
+                    console.log(`检测到 ${data.objects.length} 个物体`);
+                    
+                    // 保存检测到的物体数据
+                    detectedObjects = data.objects;
+                    selectedObjects = data.objects.map(o => o.index);
+                    imageBase64 = data.image_base64;
+                    
+                    // 显示选择界面
+                    showObjectSelection();
+                } else {
+                    console.error('检测失败或未检测到物体');
+                    alert('检测失败或未检测到物体');
+                }
+            } catch (error) {
+                console.error('Failed to detect objects:', error);
+                alert('检测失败');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+        
+        function showObjectSelection() {
+            console.log('=== 显示物体选择界面 ===');
+            console.log('检测到的物体数量:', detectedObjects.length);
+            
+            // 显示遮罩层
+            elements.personSelectionOverlay.classList.remove('hidden');
+            
+            // 显示控制面板
+            elements.personSelectionControls.classList.remove('hidden');
+            
+            // 初始化选择canvas
+            selectionCanvas = elements.selectionCanvas;
+            selectionCtx = selectionCanvas.getContext('2d');
+            
+            // 加载图片
+            const img = new Image();
+            img.onload = async () => {
+                // 设置canvas尺寸
+                selectionCanvas.width = img.width;
+                selectionCanvas.height = img.height;
+                
+                // 绘制图片
+                selectionCtx.drawImage(img, 0, 0);
+                
+                // 绘制物体遮罩
+                await drawObjectMasks();
+            };
+            img.src = `data:image/png;base64,${imageBase64}`;
+            
+            // 更新物体列表
+            updateObjectList();
+            
+            // 添加点击事件
+            selectionCanvas.onclick = handleObjectCanvasClick;
+        }
+        
+        async function drawObjectMasks() {
+            if (!selectionCtx || !detectedObjects.length) return;
+            
+            // 加载主图
+            const mainImg = await loadImage(`data:image/png;base64,${imageBase64}`);
+            selectionCanvas.width = mainImg.width;
+            selectionCanvas.height = mainImg.height;
+            selectionCtx.drawImage(mainImg, 0, 0);
+            
+            // 绘制每个物体的遮罩
+            for (let idx = 0; idx < detectedObjects.length; idx++) {
+                const obj = detectedObjects[idx];
+                const isSelected = selectedObjects.includes(obj.index);
+                const bbox = obj.bbox;
+                
+                if (obj.mask_base64) {
+                    const maskImg = await loadImage(`data:image/png;base64,${obj.mask_base64}`);
+                    
+                    const offCanvas = document.createElement('canvas');
+                    offCanvas.width = selectionCanvas.width;
+                    offCanvas.height = selectionCanvas.height;
+                    const oCtx = offCanvas.getContext('2d');
+                    
+                    oCtx.drawImage(maskImg, 0, 0);
+                    oCtx.globalCompositeOperation = 'source-in';
+                    oCtx.fillStyle = isSelected ? 'rgba(59, 130, 246, 0.6)' : 'rgba(59, 130, 246, 0.3)';
+                    oCtx.fillRect(0, 0, offCanvas.width, offCanvas.height);
+                    
+                    selectionCtx.drawImage(offCanvas, 0, 0);
+                } else {
+                    selectionCtx.fillStyle = isSelected ? 'rgba(59, 130, 246, 0.4)' : 'rgba(59, 130, 246, 0.2)';
+                    selectionCtx.fillRect(bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]);
+                }
+                
+                // 绘制边框和序号
+                selectionCtx.strokeStyle = isSelected ? '#3b82f6' : '#6b7280';
+                selectionCtx.lineWidth = isSelected ? 3 : 2;
+                selectionCtx.strokeRect(bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]);
+                selectionCtx.fillStyle = isSelected ? '#3b82f6' : '#6b7280';
+                selectionCtx.font = 'bold 24px Arial';
+                selectionCtx.fillText(`#${idx + 1}`, bbox[0] + 5, bbox[1] + 30);
+            }
+        }
+        
+        async function handleObjectCanvasClick(event) {
+            if (interactionMode) {
+                await handleInteractionClick(event);
+                return;
+            }
+            
+            const rect = selectionCanvas.getBoundingClientRect();
+            const scaleX = selectionCanvas.width / rect.width;
+            const scaleY = selectionCanvas.height / rect.height;
+            
+            const x = (event.clientX - rect.left) * scaleX;
+            const y = (event.clientY - rect.top) * scaleY;
+            
+            // 检查点击了哪个物体
+            for (let i = 0; i < detectedObjects.length; i++) {
+                const obj = detectedObjects[i];
+                const bbox = obj.bbox;
+                
+                if (x >= bbox[0] && x <= bbox[2] && y >= bbox[1] && y <= bbox[3]) {
+                    // 切换选择状态
+                    const idx = selectedObjects.indexOf(obj.index);
+                    if (idx > -1) {
+                        selectedObjects.splice(idx, 1);
+                    } else {
+                        selectedObjects.push(obj.index);
+                    }
+                    
+                    // 重绘遮罩
+                    await drawObjectMasks();
+                    
+                    // 更新物体列表
+                    updateObjectList();
+                    
+                    break;
+                }
+            }
+        }
+        
+        async function handleInteractionClick(event) {
+            event.preventDefault();
+            
+            const rect = selectionCanvas.getBoundingClientRect();
+            const scaleX = selectionCanvas.width / rect.width;
+            const scaleY = selectionCanvas.height / rect.height;
+            
+            const x = (event.clientX - rect.left) * scaleX;
+            const y = (event.clientY - rect.top) * scaleY;
+            
+            // 左键 label=1, 右键 label=0
+            const label = event.button === 2 ? 0 : 1;
+            
+            interactionPoints.push([x, y]);
+            interactionLabels.push(label);
+            
+            try {
+                const response = await fetch(`${API_BASE}/objects/interact`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        points: interactionPoints,
+                        labels: interactionLabels
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    detectedObjects[interactingObjectIndex].mask_base64 = data.mask_base64;
+                    await drawObjectMasks();
+                    drawInteractionPoints();
+                }
+            } catch (error) {
+                console.error('Interaction failed:', error);
+            }
+        }
+        
+        function drawInteractionPoints() {
+            if (!selectionCtx) return;
+            interactionPoints.forEach((pt, i) => {
+                const label = interactionLabels[i];
+                selectionCtx.beginPath();
+                selectionCtx.arc(pt[0], pt[1], 5, 0, Math.PI * 2);
+                selectionCtx.fillStyle = label === 1 ? '#10b981' : '#ef4444';
+                selectionCtx.fill();
+                selectionCtx.strokeStyle = 'white';
+                selectionCtx.lineWidth = 2;
+                selectionCtx.stroke();
+            });
+        }
+        
+        function updateObjectList() {
+            elements.personList.innerHTML = '';
+            
+            detectedObjects.forEach((obj, idx) => {
+                const isSelected = selectedObjects.includes(obj.index);
+                const isInteracting = interactionMode && interactingObjectIndex === obj.index;
+                
+                const container = document.createElement('div');
+                container.className = 'flex flex-col gap-2';
+                
+                const btn = document.createElement('button');
+                btn.className = `px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                    isSelected 
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                        : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                }`;
+                btn.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-full flex items-center justify-center ${
+                            isSelected ? 'bg-blue-400' : 'bg-gray-600'
+                        }">${idx + 1}</span>
+                        <span>物体 ${idx + 1}</span>
+                    </div>
+                `;
+                btn.onclick = () => toggleObjectSelection(obj.index);
+                
+                const refineBtn = document.createElement('button');
+                refineBtn.className = `px-3 py-1 rounded text-xs font-medium transition-all ${
+                    isInteracting 
+                        ? 'bg-green-600 text-white' 
+                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                }`;
+                refineBtn.textContent = isInteracting ? '正在精细化...' : '精细化遮罩';
+                refineBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (isInteracting) {
+                        finishObjectRefinement();
+                    } else {
+                        startObjectRefinement(obj.index);
+                    }
+                };
+                
+                container.appendChild(btn);
+                container.appendChild(refineBtn);
+                elements.personList.appendChild(container);
+            });
+        }
+        
+        async function startObjectRefinement(index) {
+            interactionMode = true;
+            interactingObjectIndex = index;
+            interactionPoints = [];
+            interactionLabels = [];
+            
+            console.log(`开始精细化物体 ${index + 1}: 左键添加点，右键移除点`);
+            alert(`进入精细化模式：\n- 左键点击：增加遮罩区域\n- 右键点击：减少遮罩区域\n- 再次点击"正在精细化"按钮完成`);
+            
+            updateObjectList();
+            await drawObjectMasks();
+        }
+        
+        async function finishObjectRefinement() {
+            if (interactingObjectIndex === -1) return;
+            interactionMode = false;
+            interactingObjectIndex = -1;
+            updateObjectList();
+            await drawObjectMasks();
+        }
+        
+        async function toggleObjectSelection(index) {
+            const idx = selectedObjects.indexOf(index);
+            if (idx > -1) {
+                selectedObjects.splice(idx, 1);
+            } else {
+                selectedObjects.push(index);
+            }
+            
+            await drawObjectMasks();
+            updateObjectList();
+        }
+        
+        async function generate3D() {
+            if (!currentImage) {
+                alert('请先生成或上传图片');
+                return;
+            }
+            
+            const btn = elements.generate3DBtn;
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `
+                <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                正在生成 3D 模型...
+            `;
+            
+            try {
+                console.log(`Generating 3D model with type: ${selectedModelType}, image: ${currentImage}`);
+                
+                let response;
+                
+                // 检查是否有多人选择
+                if (selectedPersons && selectedPersons.length > 0) {
+                    console.log('生成多人3D模型，选定的人体:', selectedPersons);
+                    response = await fetch(`${API_BASE}/3d/generate-multi`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            selected_indices: selectedPersons
+                        })
+                    });
+                } else if (selectedObjects && selectedObjects.length > 0) {
+                    console.log('生成多物体3D模型，选定的物体:', selectedObjects);
+                    response = await fetch(`${API_BASE}/3d/generate-multi-objects`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            selected_indices: selectedObjects
+                        })
+                    });
+                } else {
+                    console.log('生成单人或单物体3D模型');
+                    response = await fetch(`${API_BASE}/3d/generate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            image_path: currentImage,
+                            model_type: selectedModelType
+                        })
+                    });
+                }
+                
+                const data = await response.json();
+                console.log('Generate response:', data);
+                
+                if (data.success) {
+                    console.log('3D model generation successful');
+                    elements.downloadModelBtn.disabled = false;
+                    
+                    // 隐藏选择界面
+                    hidePersonSelection();
+                    
+                    elements.modelPlaceholder.classList.add('hidden');
+                    elements.threeContainer.classList.remove('hidden');
+                    
+                    if (!scene) {
+                        initThreeJS();
+                    }
+                    
+                    console.log('Loading model from cache...');
+                    await loadModelFromCache();
+                } else {
+                    console.error('3D model generation failed:', data.error);
+                    alert('生成3D模型失败: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Failed to generate 3D model:', error);
+                alert('生成3D模型失败');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+        
+        async function export3D() {
+            if (!currentImage) {
+                alert('请先生成或上传图片');
+                return;
+            }
+            
+            const format = elements.exportFormat.value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/3d/export`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        format: format
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const filename = data.filename;
+                    
+                    if (format === 'mhr') {
+                        alert(`MHR JSON导出成功！
+
+文件已保存到: output/${filename}
+
+MHR格式说明：
+- 官方支持的格式，数据完全正确
+- 包含完整的骨骼、姿态、身体参数
+- 可在Blender中导入使用
+- 需要编写导入脚本（见技能文档）`);
+                    } else {
+                        alert(`模型导出成功！\n文件已保存到: output/${filename}`);
+                    }
+                } else {
+                    alert('导出模型失败: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Failed to export 3D model:', error);
+                alert('导出模型失败');
+            }
+        }
+        
+        function displayImage(imageUrl) {
+            console.log('=== 显示图片 ===');
+            console.log('Image URL:', imageUrl);
+
+            const img = new Image();
+            img.crossOrigin = 'anonymous';  // 防止CORS问题
+
+            img.onload = () => {
+                console.log('✅ 图片加载成功');
+                console.log('图片原始尺寸:', img.width, 'x', img.height);
+
+                const canvas = elements.imageCanvas;
+                const ctx = canvas.getContext('2d');
+
+                // 设置canvas尺寸
+                canvas.width = img.width;
+                canvas.height = img.height;
+
+                // 清空并绘制图片
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+
+                // 显示canvas，隐藏占位符
+                elements.imagePlaceholder.classList.add('hidden');
+                elements.imageCanvas.classList.remove('hidden');
+
+                // 启用检测多人和多物体按钮
+                elements.detectPersonsBtn.disabled = false;
+                elements.detectObjectsBtn.disabled = false;
+                // 启用物体提示词输入框
+                elements.objectPromptInput.disabled = false;
+
+                console.log('✅ 图片已绘制到canvas，预览区已更新');
+                console.log('Canvas样式:', {
+                    width: canvas.width,
+                    height: canvas.height,
+                    display: window.getComputedStyle(canvas).display,
+                    hidden: canvas.classList.contains('hidden')
+                });
+            };
+
+            img.onerror = (error) => {
+                console.error('❌ 图片加载失败:', error);
+                console.error('Image URL:', imageUrl);
+
+                // 保持占位符显示
+                elements.imagePlaceholder.classList.remove('hidden');
+                elements.imageCanvas.classList.add('hidden');
+
+                alert('图片加载失败！\n\n请检查：\n1. ComfyUI是否正在运行\n2. 图片文件是否生成\n3. 浏览器控制台日志');
+            };
+
+            console.log('开始加载图片...');
+            img.src = imageUrl;
+        }
+        
+        function display3DModel(modelData, format) {
+            elements.modelPlaceholder.classList.add('hidden');
+            elements.threeContainer.classList.remove('hidden');
+            
+            if (!scene) {
+                initThreeJS();
+            }
+            
+            loadModel(modelData, format);
+        }
+        
+        async function uploadImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const formData = new FormData();
+            formData.append('image', file);
+            
+            try {
+                const response = await fetch(`${API_BASE}/image/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentImage = data.image_path;
+                    displayImage(data.image_url);
+                    elements.generate3DBtn.disabled = false;
+                } else {
+                    alert('上传图片失败: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Failed to upload image:', error);
+                alert('上传图片失败');
+            }
+        }
+        
+        
+        function resetView() {
+            if (currentModel) {
+                fitCameraToModel(currentModel);
+            }
+        }
+        
+        function toggleWireframe() {
+            wireframeMode = !wireframeMode;
+            elements.toggleWireframeBtn.textContent = wireframeMode ? '实体模式' : '线框模式';
+            
+            if (currentModel) {
+                currentModel.traverse((child) => {
+                    if (child.isMesh) {
+                        child.material.wireframe = wireframeMode;
+                    }
+                });
+            }
+        }
+        
+        function toggleFloor() {
+            floorVisible = !floorVisible;
+            if (floorMesh) {
+                floorMesh.visible = floorVisible;
+            }
+            elements.toggleFloorBtn.textContent = floorVisible ? '隐藏地板' : '显示地板';
+        }
+        
+        elements.bodyTypeBtn.addEventListener('click', () => {
+            selectedModelType = 'body';
+            elements.bodyTypeBtn.classList.add('active');
+            elements.objectsTypeBtn.classList.remove('active');
+        });
+        
+        elements.objectsTypeBtn.addEventListener('click', () => {
+            selectedModelType = 'objects';
+            elements.objectsTypeBtn.classList.add('active');
+            elements.bodyTypeBtn.classList.remove('active');
+        });
+        
+        elements.llmProvider.addEventListener('change', () => {
+            const provider = elements.llmProvider.value;
+            elements.apiKeyContainer.classList.toggle('hidden', 
+                !['deepseek', 'siliconflow', 'custom'].includes(provider));
+            
+            const defaultUrls = {
+                'ollama': 'http://localhost:11434',
+                'lmstudio': 'http://localhost:1234/v1',
+                'vllm': 'http://localhost:8000/v1',
+                'remote-vllm': 'http://192.168.1.5:8000/v1',
+                'deepseek': 'https://api.deepseek.com',
+                'custom': ''
+            };
+            
+            if (defaultUrls[provider]) {
+                elements.llmUrl.value = defaultUrls[provider];
+            }
+        });
+        
+        elements.refreshModelsBtn.addEventListener('click', refreshModels);
+        elements.generatePromptBtn.addEventListener('click', generatePrompt);
+        elements.generateImageBtn.addEventListener('click', generateImage);
+        elements.generate3DBtn.addEventListener('click', generate3D);
+        elements.uploadImageBtn.addEventListener('click', () => elements.imageUploadInput.click());
+        elements.imageUploadInput.addEventListener('change', uploadImage);
+        elements.downloadModelBtn.addEventListener('click', export3D);
+        elements.resetViewBtn.addEventListener('click', resetView);
+        elements.toggleWireframeBtn.addEventListener('click', toggleWireframe);
+        elements.toggleFloorBtn.addEventListener('click', toggleFloor);
+        elements.detectPersonsBtn.addEventListener('click', detectPersons);
+        elements.selectAllBtn.addEventListener('click', selectAllPersons);
+        elements.deselectAllBtn.addEventListener('click', deselectAllPersons);
+        elements.detectObjectsBtn.addEventListener('click', detectObjects);
+
+        // 监听输入框变化，根据内容状态启用/禁用生成图片按钮
+        elements.userInput.addEventListener('input', () => {
+            const hasContent = elements.userInput.value.trim().length > 0;
+            elements.generateImageBtn.disabled = !hasContent;
+        });
+
+        // 初始化时检查输入框状态
+        elements.generateImageBtn.disabled = elements.userInput.value.trim().length === 0;
+        
+        checkBackendStatus();
+        setInterval(checkBackendStatus, 30000);
+
+        // 页面加载完成后自动刷新模型列表
+        setTimeout(() => {
+            console.log('页面加载完成，自动刷新模型列表...');
+            refreshModels();
+        }, 1000);
+    </script>
+</body>
+</html>
